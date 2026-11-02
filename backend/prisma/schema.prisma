@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+enum Role {
+  ORG_ADMIN
+  TENANT_ADMIN
+  MEMBER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenants     Tenant[]
+  memberships Membership[]
+}
+
+model Tenant {
+  id             String   @id @default(uuid()) 
+  organizationId String   
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships  Membership[]
+  boards       Board[]
+  activityLogs ActivityLog[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId])
+}
+
+model User {
+  id        String   @id @default(uuid()) 
+  name      String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships   Membership[]
+  tasksCreated  Task[]        @relation("TaskCreator")
+  tasksAssigned Task[]        @relation("TaskAssignee")
+  activityLogs  ActivityLog[]
+}
+
+model Membership {
+  id             String   @id @default(uuid()) 
+  userId         String   
+  organizationId String   
+  tenantId       String?  
+  role           Role     @default(MEMBER)
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([organizationId, role])
+  @@index([tenantId, role])
+}
+
+model Board {
+  id             String   @id @default(uuid()) 
+  organizationId String   
+  tenantId       String   
+  name           String
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  columns Column[]
+
+  @@unique([id, tenantId, organizationId])
+  @@index([tenantId, createdAt])
+}
+
+model Column {
+  id             String   @id @default(uuid()) 
+  organizationId String   
+  tenantId       String  
+  boardId        String  
+  name           String
+  position       Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  board Board  @relation(fields: [boardId, tenantId, organizationId], references: [id, tenantId, organizationId], onDelete: Cascade)
+  tasks Task[]
+
+  @@unique([id, boardId, tenantId, organizationId])
+  @@index([boardId, position])
+  @@index([tenantId, boardId])
+}
+
+model Task {
+  id             String       @id @default(uuid()) 
+  organizationId String       
+  tenantId       String       
+  boardId        String       
+  columnId       String       
+  title          String
+  description    String?
+  status         TaskStatus   @default(TODO)
+  priority       TaskPriority @default(MEDIUM)
+  position       Int          @default(0)
+  version        Int          @default(1)
+  dueDate        DateTime?
+  createdById    String       
+  assignedToId   String?      
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  column     Column @relation(fields: [columnId, boardId, tenantId, organizationId], references: [id, boardId, tenantId, organizationId], onDelete: Cascade)
+  createdBy  User   @relation("TaskCreator", fields: [createdById], references: [id])
+  assignedTo User?  @relation("TaskAssignee", fields: [assignedToId], references: [id])
+
+  @@index([tenantId, boardId, columnId, position])
+  @@index([tenantId, status])
+  @@index([assignedToId])
+}
+
+model ActivityLog {
+  id             String   @id @default(uuid()) 
+  organizationId String   
+  tenantId       String   
+  actorId        String?  
+  action         String
+  entityType     String
+  entityId       String   
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  actor  User?  @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
+}
+
